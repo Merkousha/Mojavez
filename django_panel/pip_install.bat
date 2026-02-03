@@ -1,0 +1,3 @@
+@echo off
+echo Installing packages from Iranian mirror...
+python -m pip install -r requirements.txt -i https://mirror-pypi.runflare.com/simple

@@ -1,0 +1,3 @@
+@echo off
+echo Starting Celery Worker...
+celery -A crawler_panel worker --loglevel=info --pool=threads --concurrency=4

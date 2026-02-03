@@ -1,0 +1,109 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پنل مدیریت کراولر - qr.mojavez.ir</title>
+    <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🕷️ پنل مدیریت کراولر</h1>
+            <p>مدیریت و نظارت بر کراولهای qr.mojavez.ir</p>
+        </header>
+
+        <!-- آمار کلی -->
+        <section class="stats-section">
+            <h2>📊 آمار کلی</h2>
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalJobs">-</div>
+                    <div class="stat-label">کل کراول‌ها</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="runningJobs">-</div>
+                    <div class="stat-label">در حال اجرا</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="completedJobs">-</div>
+                    <div class="stat-label">تکمیل شده</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalRecords">-</div>
+                    <div class="stat-label">کل رکوردها</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- فرم ایجاد کراول جدید -->
+        <section class="form-section">
+            <h2>➕ ایجاد کراول جدید</h2>
+            <form id="createJobForm" class="job-form">
+                <div class="form-group">
+                    <label for="jobName">نام کراول:</label>
+                    <input type="text" id="jobName" required placeholder="مثال: کراول تهران - بهمن 1404">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="startDate">تاریخ شروع:</label>
+                        <input type="text" id="startDate" required placeholder="2026/1/21" pattern="\d{4}/\d{1,2}/\d{1,2}">
+                    </div>
+                    <div class="form-group">
+                        <label for="endDate">تاریخ پایان:</label>
+                        <input type="text" id="endDate" required placeholder="2026/2/2" pattern="\d{4}/\d{1,2}/\d{1,2}">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="provinceId">شناسه استان (اختیاری):</label>
+                        <input type="number" id="provinceId" placeholder="مثال: 33 برای تهران">
+                    </div>
+                    <div class="form-group">
+                        <label for="townshipId">شناسه شهر (اختیاری):</label>
+                        <input type="number" id="townshipId" placeholder="مثال: 3310 برای تهران">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="provinceName">نام استان (اختیاری):</label>
+                        <input type="text" id="provinceName" placeholder="تهران">
+                    </div>
+                    <div class="form-group">
+                        <label for="townshipName">نام شهر (اختیاری):</label>
+                        <input type="text" id="townshipName" placeholder="تهران">
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">🚀 ایجاد و شروع کراول</button>
+            </form>
+        </section>
+
+        <!-- لیست کراول‌ها -->
+        <section class="jobs-section">
+            <h2>📋 لیست کراول‌ها</h2>
+            <div class="jobs-header">
+                <button onclick="refreshJobs()" class="btn btn-secondary">🔄 به‌روزرسانی</button>
+            </div>
+            <div id="jobsList" class="jobs-list">
+                <div class="loading">در حال بارگذاری...</div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal برای نمایش رکوردها -->
+    <div id="recordsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>📄 رکوردهای کراول</h2>
+            <div id="recordsList" class="records-list"></div>
+        </div>
+    </div>
+
+    <script src="{% static 'script.js' %}"></script>
+</body>
+</html>
