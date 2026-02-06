@@ -1,6 +1,24 @@
 // API Base URL
 const API_BASE = '/api';
 
+// CSRF helper (for Django session-auth APIs)
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+const CSRF_TOKEN = getCookie('csrftoken');
+
 // SSE Connection
 let eventSource = null;
 let jobsData = {};  // Cache for jobs data
@@ -13,6 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Connect to Server-Sent Events for real-time updates
     connectSSE();
+
+    // Simple polling to keep job list (including detail progress) fresh
+    setInterval(loadJobs, 5000);
 });
 
 // Connect to SSE
@@ -139,6 +160,11 @@ function createJobCard(job) {
     const progress = job.progress_percentage || 0;
     const location = job.province_name || job.province_id || 'همه';
     const city = job.township_name || job.township_id || 'همه';
+    const detailTotal = job.detail_total || 0;
+    const detailProcessed = job.detail_processed || 0;
+    const detailErrors = job.detail_errors || 0;
+    const detailStatus = job.detail_status || 'pending';
+    const detailPercent = detailTotal > 0 ? Math.floor((detailProcessed / detailTotal) * 100) : 0;
     
     return `
         <div class="job-card" id="job-${job.id}">
@@ -160,6 +186,15 @@ function createJobCard(job) {
                     <span class="job-info-label">رکوردها:</span>
                     <span class="job-info-value">${job.fetched_records.toLocaleString('fa-IR')} / ${job.total_records.toLocaleString('fa-IR')}</span>
                 </div>
+                ${detailTotal > 0 || detailStatus === 'running' ? `
+                <div class="job-info-item">
+                    <span class="job-info-label">جزئیات مجوز:</span>
+                    <span class="job-info-value">
+                        ${detailProcessed.toLocaleString('fa-IR')} / ${detailTotal.toLocaleString('fa-IR')}
+                        ${detailErrors ? ` (خطا: ${detailErrors.toLocaleString('fa-IR')})` : ''}
+                    </span>
+                </div>
+                ` : ''}
                 <div class="job-info-item">
                     <span class="job-info-label">تاریخ ایجاد:</span>
                     <span class="job-info-value">${new Date(job.created_at).toLocaleString('fa-IR')}</span>
@@ -172,6 +207,17 @@ function createJobCard(job) {
                 </div>
                 <div style="text-align: center; margin-top: 5px; color: #666; font-size: 0.9em;">
                     صفحه ${job.current_page} از ${job.total_pages || '?'}
+                </div>
+            ` : ''}
+            
+            ${detailStatus === 'running' && detailTotal > 0 ? `
+                <div class="progress-bar" style="margin-top: 6px; background: #f0f4ff;">
+                    <div class="progress-fill" style="width: ${detailPercent}%; background: #007bff;">
+                        ${detailPercent}%
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 3px; color: #666; font-size: 0.85em;">
+                    در حال دریافت جزئیات مجوز...
                 </div>
             ` : ''}
             
@@ -189,6 +235,9 @@ function createJobCard(job) {
                     <button class="btn btn-danger" onclick="cancelJob(${job.id})">⏹️ لغو</button>
                 ` : ''}
                 <button class="btn btn-secondary" onclick="viewRecords(${job.id})">📄 رکوردها</button>
+                ${job.status === 'completed' ? `
+                    <button class="btn btn-primary" onclick="fetchDetails(${job.id})">📥 جزئیات مجوز</button>
+                ` : ''}
                 <button class="btn btn-danger" onclick="deleteJob(${job.id})">🗑️ حذف</button>
             </div>
         </div>
@@ -213,7 +262,8 @@ document.getElementById('createJobForm').addEventListener('submit', async (e) =>
         const response = await fetch(`${API_BASE}/jobs/`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN,
             },
             body: JSON.stringify(formData)
         });
@@ -236,7 +286,10 @@ document.getElementById('createJobForm').addEventListener('submit', async (e) =>
 async function startJob(jobId) {
     try {
         const response = await fetch(`${API_BASE}/jobs/${jobId}/start/`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN,
+            },
         });
         
         if (response.ok) {
@@ -259,7 +312,10 @@ async function cancelJob(jobId) {
     
     try {
         const response = await fetch(`${API_BASE}/jobs/${jobId}/cancel/`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN,
+            },
         });
         
         if (response.ok) {
@@ -282,7 +338,10 @@ async function deleteJob(jobId) {
     
     try {
         const response = await fetch(`${API_BASE}/jobs/${jobId}/`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN,
+            },
         });
         
         if (response.ok) {
@@ -326,6 +385,31 @@ async function viewRecords(jobId) {
         modal.style.display = 'block';
     } catch (error) {
         alert('❌ خطا در بارگذاری رکوردها: ' + error.message);
+    }
+}
+
+// Fetch mojavez_detail for a job
+async function fetchDetails(jobId) {
+    if (!confirm('برای این کراول، جزئیات مجوزها از سایت qr.mojavez.ir خوانده و در جدول mojavez_detail ذخیره شود؟')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/jobs/${jobId}/fetch_details/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN,
+            },
+        });
+
+        if (response.ok) {
+            alert('✅ تسک دریافت جزئیات مجوزها شروع شد. چند لحظه بعد، رکوردها در دیتابیس پر می‌شوند.');
+        } else {
+            const error = await response.json();
+            alert('❌ خطا در شروع تسک جزئیات: ' + (error.detail || error.error || 'خطای نامشخص'));
+        }
+    } catch (error) {
+        alert('❌ خطا در اتصال برای دریافت جزئیات: ' + error.message);
     }
 }
 

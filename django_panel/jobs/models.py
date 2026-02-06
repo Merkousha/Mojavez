@@ -29,10 +29,22 @@ class CrawlJob(models.Model):
     total_records = models.IntegerField(default=0, verbose_name='تعداد کل رکوردها')
     fetched_records = models.IntegerField(default=0, verbose_name='تعداد رکوردهای دریافت شده')
     
-    # Progress tracking
+    # Progress tracking (main crawl)
     current_page = models.IntegerField(default=0, verbose_name='صفحه فعلی')
     total_pages = models.IntegerField(default=0, verbose_name='تعداد کل صفحات')
     progress_percentage = models.IntegerField(default=0, verbose_name='درصد پیشرفت')
+    
+    # Detail tracking (mojavez_detail)
+    detail_total = models.IntegerField(default=0, verbose_name='تعداد کل رکوردهای جزئیات')
+    detail_processed = models.IntegerField(default=0, verbose_name='تعداد جزئیات پردازش‌شده')
+    detail_errors = models.IntegerField(default=0, verbose_name='تعداد خطا در جزئیات')
+    detail_status = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        verbose_name='وضعیت دریافت جزئیات',
+        help_text='pending / running / completed / failed'
+    )
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ ایجاد')
@@ -77,7 +89,10 @@ class CrawlRecord(models.Model):
     user_image = models.CharField(max_length=500, null=True, blank=True, verbose_name='تصویر کاربر')
     license_title = models.CharField(max_length=500, null=True, blank=True, verbose_name='عنوان مجوز')
     organization_title = models.CharField(max_length=500, null=True, blank=True, verbose_name='عنوان سازمان')
+    # شناسه و نام/عنوان استان و شهر
+    province_id = models.IntegerField(null=True, blank=True, verbose_name='شناسه استان')
     province_title = models.CharField(max_length=100, null=True, blank=True, verbose_name='استان')
+    township_id = models.IntegerField(null=True, blank=True, verbose_name='شناسه شهر')
     township_title = models.CharField(max_length=100, null=True, blank=True, verbose_name='شهر')
     responded_at = models.CharField(max_length=50, null=True, blank=True, verbose_name='تاریخ پاسخ')
     
@@ -103,3 +118,55 @@ class CrawlRecord(models.Model):
     
     def __str__(self):
         return f"{self.request_number or 'N/A'} - {self.applicant_name or 'N/A'}"
+
+
+class MojavezDetail(models.Model):
+    """
+    جزئیات صفحه track برای هر رکورد (mojavez_detail)
+    داده‌ها با BeautifulSoup از https://qr.mojavez.ir/track/{request_number} استخراج می‌شوند.
+    """
+
+    crawl_record = models.OneToOneField(
+        CrawlRecord,
+        on_delete=models.CASCADE,
+        related_name='detail',
+        verbose_name='رکورد کراول'
+    )
+    request_number = models.CharField(
+        max_length=100,
+        db_index=True,
+        verbose_name='شماره درخواست'
+    )
+
+    # فیلدهای اصلی صفحه مجوز
+    license_title = models.CharField(max_length=500, null=True, blank=True, verbose_name='عنوان مجوز')
+    organization_title = models.CharField(max_length=500, null=True, blank=True, verbose_name='مرجع صدور')
+    isic_code = models.CharField(max_length=100, null=True, blank=True, verbose_name='کد آیسیک')
+    issue_type = models.CharField(max_length=200, null=True, blank=True, verbose_name='نوع صدور')
+    issued_at = models.CharField(max_length=50, null=True, blank=True, verbose_name='تاریخ صدور / تمدید')
+    expires_at = models.CharField(max_length=50, null=True, blank=True, verbose_name='تاریخ اعتبار')
+
+    # محل کسب و کار
+    province_title = models.CharField(max_length=100, null=True, blank=True, verbose_name='استان (جزئیات)')
+    township_title = models.CharField(max_length=100, null=True, blank=True, verbose_name='شهرستان (جزئیات)')
+    postal_code = models.CharField(max_length=50, null=True, blank=True, verbose_name='کدپستی')
+    business_address = models.TextField(null=True, blank=True, verbose_name='نشانی کسب و کار')
+
+    # وضعیت مجوز
+    status_title = models.CharField(max_length=100, null=True, blank=True, verbose_name='وضعیت مجوز')
+    status_slug = models.CharField(max_length=100, null=True, blank=True, verbose_name='Slug وضعیت مجوز')
+
+    # داده خام برای debug / future use
+    raw_data = models.JSONField(null=True, blank=True, verbose_name='داده خام (JSON)')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ ایجاد')
+
+    class Meta:
+        db_table = 'mojavez_detail'
+        verbose_name = 'جزئیات مجوز'
+        verbose_name_plural = 'جزئیات مجوزها'
+        indexes = [
+            models.Index(fields=['request_number']),
+        ]
+
+    def __str__(self):
+        return f"جزئیات مجوز {self.request_number or 'N/A'}"

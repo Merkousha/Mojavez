@@ -9,16 +9,21 @@ from rest_framework.response import Response
 from django.db.models import Count, Q
 from django.shortcuts import render
 from django.http import StreamingHttpResponse
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from .models import CrawlJob, CrawlRecord
 from .serializers import (
     CrawlJobSerializer, CrawlJobCreateSerializer,
     CrawlRecordSerializer, CrawlJobStatsSerializer
 )
-from .tasks import run_crawl_job
+from .tasks import run_crawl_job, fetch_mojavez_details_for_job
 
 
+@login_required
+@user_passes_test(lambda u: u.is_staff)
 def index_view(request):
-    """صفحه اصلی پنل"""
+    """صفحه اصلی پنل - فقط برای کاربران ادمین (is_staff) قابل دسترسی است"""
     return render(request, 'jobs/index.html')
 
 
@@ -86,6 +91,7 @@ def events_view(request):
     return response
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class CrawlJobViewSet(viewsets.ModelViewSet):
     """ViewSet برای مدیریت کراول جاب‌ها"""
     queryset = CrawlJob.objects.all()
@@ -185,6 +191,18 @@ class CrawlJobViewSet(viewsets.ModelViewSet):
         
         serializer = CrawlJobStatsSerializer(stats)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def fetch_details(self, request, pk=None):
+        """
+        راه‌اندازی تسک Celery برای کشیدن جزئیات صفحه track (mojavez_detail)
+        """
+        job = self.get_object()
+        task = fetch_mojavez_details_for_job.delay(job.id)
+        return Response(
+            {"message": "Detail fetch started", "task_id": task.id},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class CrawlRecordViewSet(viewsets.ReadOnlyModelViewSet):

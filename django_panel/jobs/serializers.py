@@ -29,12 +29,14 @@ class CrawlJobSerializer(serializers.ModelSerializer):
             'province_id', 'township_id', 'province_name', 'township_name',
             'status', 'total_records', 'fetched_records',
             'current_page', 'total_pages', 'progress_percentage',
+            'detail_total', 'detail_processed', 'detail_errors', 'detail_status',
             'created_at', 'started_at', 'completed_at',
             'error_message', 'task_id', 'records_count'
         ]
         read_only_fields = [
             'id', 'status', 'total_records', 'fetched_records',
             'current_page', 'total_pages', 'progress_percentage',
+            'detail_total', 'detail_processed', 'detail_errors', 'detail_status',
             'created_at', 'started_at', 'completed_at',
             'error_message', 'task_id'
         ]

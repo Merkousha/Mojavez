@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from crawler import MojavezCrawler
 from date_utils import format_date_for_api, parse_api_date
-from .models import CrawlJob, CrawlRecord
+from .models import CrawlJob, CrawlRecord, MojavezDetail
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,9 @@ def run_crawl_job(self, job_id):
                         user_image=record_data.get('user_image'),
                         license_title=record_data.get('license_title'),
                         organization_title=record_data.get('organization_title'),
+                        province_id=record_data.get('province_id'),
                         province_title=record_data.get('province_title'),
+                        township_id=record_data.get('township_id'),
                         township_title=record_data.get('township_title'),
                         responded_at=record_data.get('responded_at'),
                         status_id=record_data.get('status', {}).get('status_id') if isinstance(record_data.get('status'), dict) else None,
@@ -275,6 +277,14 @@ def run_crawl_job(self, job_id):
         job.save()
         
         logger.info(f"✅ [Job {job_id}] Completed successfully! Total records: {final_count}")
+
+        # After main crawl is completed, automatically start detail fetching task
+        try:
+            from .tasks import fetch_mojavez_details_for_job
+            logger.info(f"🧾 [Job {job_id}] Triggering detail fetch task...")
+            fetch_mojavez_details_for_job.delay(job_id)
+        except Exception as e:
+            logger.error(f"❌ [Job {job_id}] Failed to trigger detail fetch task: {e}")
         
         return {
             'job_id': job_id,
@@ -302,3 +312,86 @@ def run_crawl_job(self, job_id):
         countdown = min(60 * (2 ** retry_count), 600)  # Max 10 minutes
         logger.warning(f"🔄 [Job {job_id}] Retrying in {countdown} seconds... (attempt {retry_count + 1}/{self.max_retries})")
         raise self.retry(exc=e, countdown=countdown)
+
+
+@shared_task(bind=True, max_retries=5)
+def fetch_mojavez_details_for_job(self, job_id: int):
+    """
+    برای همه رکوردهای یک CrawlJob، صفحه track را با BeautifulSoup می‌خواند
+    و جدول mojavez_detail را پر می‌کند.
+    """
+    try:
+        job = CrawlJob.objects.get(id=job_id)
+    except CrawlJob.DoesNotExist:
+        logger.error(f"❌ [Detail Job {job_id}] CrawlJob not found")
+        return {'job_id': job_id, 'status': 'not_found'}
+    
+    total = job.records.count()
+    job.detail_total = total
+    job.detail_processed = 0
+    job.detail_errors = 0
+    job.detail_status = 'running'
+    job.save(update_fields=['detail_total', 'detail_processed', 'detail_errors', 'detail_status'])
+
+    logger.info(f"🧾 [Detail Job {job_id}] Fetching mojavez_detail for {total} records...")
+    
+    crawler = MojavezCrawler()
+    processed = 0
+    errors = 0
+    
+    for record in job.records.all().iterator():
+        if not record.request_number:
+            continue
+        
+        # اگر قبلاً جزئیات ثبت شده، رد شو
+        if hasattr(record, "detail"):
+            continue
+        
+        try:
+            html = crawler.fetch_track_page(record.request_number)
+            if not html:
+                errors += 1
+                continue
+            
+            parsed = crawler.parse_track_html(html, request_number=record.request_number)
+            
+            MojavezDetail.objects.create(
+                crawl_record=record,
+                request_number=parsed.get("request_number") or record.request_number,
+                license_title=parsed.get("license_title"),
+                organization_title=parsed.get("organization_title"),
+                isic_code=parsed.get("isic_code"),
+                issue_type=parsed.get("issue_type"),
+                issued_at=parsed.get("issued_at"),
+                expires_at=parsed.get("expires_at"),
+                province_title=parsed.get("province_title_detail"),
+                township_title=parsed.get("township_title_detail"),
+                postal_code=parsed.get("postal_code"),
+                business_address=parsed.get("business_address"),
+                status_title=parsed.get("status_title"),
+                status_slug=parsed.get("status_slug"),
+                raw_data=parsed,
+            )
+            processed += 1
+
+            # Update job detail progress
+            job.detail_processed = processed
+            job.save(update_fields=['detail_processed'])
+            
+            # تاخیر خیلی کوتاه برای احترام به سرور
+            time.sleep(0.3)
+        except Exception as e:
+            logger.error(f"❌ [Detail Job {job_id}] Error fetching detail for {record.request_number}: {e}")
+            errors += 1
+            job.detail_errors = errors
+            job.save(update_fields=['detail_errors'])
+    
+    job.detail_status = 'completed'
+    job.save(update_fields=['detail_status'])
+
+    logger.info(f"✅ [Detail Job {job_id}] Done. Processed: {processed}, Errors: {errors}")
+    return {
+        "job_id": job_id,
+        "processed": processed,
+        "errors": errors,
+    }

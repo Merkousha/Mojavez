@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Load environment variables
 load_dotenv()
@@ -60,6 +61,11 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# Authentication
+# آدرس پیش‌فرض لاگین برای دکوراتورهای login_required
+LOGIN_URL = '/admin/login/'
+LOGIN_REDIRECT_URL = '/'
+
 ROOT_URLCONF = 'crawler_panel.urls'
 
 TEMPLATES = [
@@ -85,12 +91,12 @@ WSGI_APPLICATION = 'crawler_panel.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 # Database Configuration
-# برای استفاده از SQLite در development، USE_SQLITE=True را در .env تنظیم کنید
-# به صورت پیش‌فرض برای development از SQLite استفاده می‌کنیم
-USE_SQLITE = os.getenv('USE_SQLITE', 'True').lower() == 'true'
+# به صورت پیش‌فرض از PostgreSQL استفاده می‌کنیم.
+# فقط اگر صراحتاً USE_SQLITE=True در env باشد، از SQLite استفاده می‌شود.
+USE_SQLITE = os.getenv('USE_SQLITE', 'False').lower() == 'true'
 
 if USE_SQLITE:
-    # استفاده از SQLite برای development
+    # استفاده از SQLite برای development محلی
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -98,47 +104,35 @@ if USE_SQLITE:
         }
     }
 else:
-    # استفاده از PostgreSQL
-    DATABASE_URL = os.getenv('DATABASE_URL', 'postgres://postgres:04cTAnvcHRbwr0T9cXXB@666dc316-12f4-49f3-987f-ca1a0781a9fa.hadb.ir:26641/postgres')
-    
-    # Parse connection string
+    # استفاده از PostgreSQL (نیاز به DATABASE_URL معتبر در env)
+    DATABASE_URL = os.getenv('DATABASE_URL')
+    if not DATABASE_URL:
+        raise ImproperlyConfigured("DATABASE_URL must be set when USE_SQLITE is False.")
+
     if DATABASE_URL.startswith('postgres://'):
         import re
         match = re.match(r'postgres://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
-        if match:
-            db_user, db_password, db_host, db_port, db_name = match.groups()
-            DATABASES = {
-                'default': {
-                    'ENGINE': 'django.db.backends.postgresql',
-                    'NAME': db_name,
-                    'USER': db_user,
-                    'PASSWORD': db_password,
-                    'HOST': db_host,
-                    'PORT': db_port,
-                    'OPTIONS': {
-                        'connect_timeout': 10,
-                        'options': '-c statement_timeout=30000'
-                    },
-                    'CONN_MAX_AGE': 600,
-                }
-            }
-        else:
-            # Fallback to SQLite if connection string is invalid
-            print("Warning: Invalid PostgreSQL connection string. Falling back to SQLite.")
-            DATABASES = {
-                'default': {
-                    'ENGINE': 'django.db.backends.sqlite3',
-                    'NAME': BASE_DIR / 'db.sqlite3',
-                }
-            }
-    else:
-        # Fallback to SQLite
+        if not match:
+            raise ImproperlyConfigured("Invalid PostgreSQL connection string in DATABASE_URL.")
+
+        db_user, db_password, db_host, db_port, db_name = match.groups()
         DATABASES = {
             'default': {
-                'ENGINE': 'django.db.backends.sqlite3',
-                'NAME': BASE_DIR / 'db.sqlite3',
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': db_name,
+                'USER': db_user,
+                'PASSWORD': db_password,
+                'HOST': db_host,
+                'PORT': db_port,
+                'OPTIONS': {
+                    'connect_timeout': 10,
+                    'options': '-c statement_timeout=30000'
+                },
+                'CONN_MAX_AGE': 600,
             }
         }
+    else:
+        raise ImproperlyConfigured("DATABASE_URL must start with 'postgres://'.")
 
 
 # Password validation

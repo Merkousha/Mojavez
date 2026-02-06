@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import time
 import logging
+from bs4 import BeautifulSoup
 from date_utils import format_date_for_api
 
 # تنظیمات لاگ
@@ -275,11 +276,6 @@ class MojavezCrawler:
                 'records': licenses,
                 'pagination': pagination_info
             }
-            
-            return {
-                'records': licenses,
-                'pagination': pagination_info
-            }
         except Exception as e:
             logger.error(f"❌ Error fetching records: {e}")
             return {'records': [], 'pagination': {'total': 0, 'per_page': 0, 'current_page': 0, 'total_pages': 0}}
@@ -340,6 +336,77 @@ class MojavezCrawler:
         except Exception as e:
             logger.error(f"❌ Error getting cities list: {e}")
             return []
+
+    def fetch_track_page(self, request_number: str) -> Optional[str]:
+        """
+        دریافت HTML صفحه track بر اساس request_number
+
+        Args:
+            request_number: کد رهگیری (همان request_number)
+
+        Returns:
+            محتوای HTML صفحه یا None در صورت خطا
+        """
+        try:
+            url = f"https://qr.mojavez.ir/track/{request_number}"
+            logger.info(f"🌐 Fetching track page: {url}")
+            resp = self.session.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp.text
+        except requests.RequestException as e:
+            logger.error(f"❌ Error fetching track page for {request_number}: {e}")
+            return None
+
+    def parse_track_html(self, html: str, request_number: Optional[str] = None) -> Dict[str, Any]:
+        """
+        پارس کردن HTML صفحه track و استخراج جزئیات مجوز
+
+        این متد به صورت best-effort کار می‌کند و اگر ساختار صفحه تغییر کند،
+        تا حد امکان فیلدهای شناخته‌شده را برمی‌گرداند.
+
+        Returns:
+            دیکشنری شامل فیلدهای اصلی برای ذخیره در جدول mojavez_detail
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        def extract_label_value(label_text: str) -> Optional[str]:
+            span = soup.find("span", string=lambda t: t and label_text in t)
+            if not span:
+                return None
+            val_span = span.find_next_sibling("span")
+            if not val_span:
+                return None
+            return val_span.get_text(strip=True)
+
+        data: Dict[str, Any] = {}
+
+        # اطلاعات مجوز
+        data["request_number"] = request_number or extract_label_value("کد رهگیری")
+        data["license_title"] = extract_label_value("عنوان مجوز")
+        data["organization_title"] = extract_label_value("مرجع صدور")
+        data["isic_code"] = extract_label_value("کد آیسیک")
+        data["issue_type"] = extract_label_value("نوع صدور")
+        data["issued_at"] = extract_label_value("تاریخ صدور / تمدید")
+        data["expires_at"] = extract_label_value("تاریخ اعتبار")
+
+        # اطلاعات محل کسب و کار
+        data["province_title_detail"] = extract_label_value("استان")
+        data["township_title_detail"] = extract_label_value("شهرستان")
+        data["postal_code"] = extract_label_value("کدپستی")
+        data["business_address"] = extract_label_value("نشانی کسب و کار")
+
+        # وضعیت کلی مجوز (از بخش licenseDetail در Next data اگر در HTML موجود باشد)
+        try:
+            # ساده‌ترین راه: جستجوی status_title و status_slug در متن
+            if "status_title" in html and "status_slug" in html:
+                # خیلی ساده، ولی برای لاگ و debug کافی است
+                if "معتبر" in html:
+                    data.setdefault("status_title", "معتبر")
+                    data.setdefault("status_slug", "active")
+        except Exception:
+            pass
+
+        return data
     
     def split_date_range(self, start_date: datetime, end_date: datetime) -> List[tuple]:
         """
@@ -414,6 +481,14 @@ class MojavezCrawler:
                 if not records:
                     logger.info(f"ℹ️ No more records on page {page}")
                     break
+                
+                # Annotate records with current location IDs so downstream
+                # consumers (مثل Django jobs app) بتوانند province_id/township_id را ذخیره کنند
+                for r in records:
+                    if province_id is not None:
+                        r['province_id'] = province_id
+                    if township_id is not None:
+                        r['township_id'] = township_id
                 
                 all_records.extend(records)
                 logger.info(f"✅ Fetched {len(records)} records from page {page} (Total: {len(all_records)}/{count})")
@@ -524,6 +599,12 @@ class MojavezCrawler:
                             chunk_records = self.fetch_records_with_pagination(
                                 chunk_start_str, chunk_end_str, province_id, township_id
                             )
+                            # Annotate with location IDs
+                            for r in chunk_records:
+                                if province_id is not None:
+                                    r['province_id'] = province_id
+                                if township_id is not None:
+                                    r['township_id'] = township_id
                             all_records.extend(chunk_records)
                             
                             # Save records immediately
@@ -550,6 +631,12 @@ class MojavezCrawler:
                                 hour_records = self.fetch_records_with_pagination(
                                     hour_start_str, hour_end_str, province_id, township_id
                                 )
+                                # Annotate with location IDs
+                                for r in hour_records:
+                                    if province_id is not None:
+                                        r['province_id'] = province_id
+                                    if township_id is not None:
+                                        r['township_id'] = township_id
                                 all_records.extend(hour_records)
                                 
                                 # Save records immediately
