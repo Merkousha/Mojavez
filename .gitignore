@@ -42,9 +42,13 @@ Thumbs.db
 
 # Schema files (generated)
 graphql_schema.json
+graphql_full_schema.json
 schema_partial.json
 
 # Output data
 records_*.json
 example_output.json
 tehran_records.json
+
+# Databases
+*.sqlite3
