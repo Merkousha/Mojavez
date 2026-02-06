@@ -1,0 +1,40 @@
+FROM python:3.12-slim
+
+# Basic Python settings
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DJANGO_SETTINGS_MODULE=crawler_panel.settings \
+    DEBUG=False
+
+WORKDIR /app
+
+# System dependencies (psycopg2, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and install Python deps
+COPY requirements.txt ./requirements.txt
+COPY django_panel/requirements.txt ./django_panel/requirements.txt
+
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install -r django_panel/requirements.txt
+
+# Copy project
+COPY . .
+
+# Django project directory
+WORKDIR /app/django_panel
+
+# Collect static files (ignore errors in non-prod envs)
+RUN python manage.py collectstatic --noinput || echo "skip collectstatic"
+
+EXPOSE 8000
+
+# Default command: Django dev server (override with gunicorn in production if needed)
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
