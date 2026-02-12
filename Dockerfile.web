@@ -30,11 +30,8 @@ COPY . .
 # Django project directory
 WORKDIR /app/django_panel
 
-# Collect static files (ignore errors in non-prod envs)
-RUN python manage.py collectstatic --noinput || echo "skip collectstatic"
-
 EXPOSE 8000
 
-# Default command: Django dev server (override with gunicorn in production if needed)
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Default command: collect static with runtime envs, then run server
+CMD ["sh", "-c", "python manage.py collectstatic --noinput; python manage.py runserver 0.0.0.0:8000"]
 
