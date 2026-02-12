@@ -192,6 +192,12 @@ CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes
 CELERY_WORKER_POOL = 'threads'  # Use threads pool for Windows compatibility
 CELERY_WORKER_CONCURRENCY = 4  # Number of concurrent threads
+CELERY_DEFAULT_QUEUE = os.getenv('CELERY_DEFAULT_QUEUE', 'default')
+CELERY_KNOWN_WORKERS = [
+    name.strip()
+    for name in os.getenv('CELERY_KNOWN_WORKERS', '').split(',')
+    if name.strip()
+]
 
 # Django REST Framework
 REST_FRAMEWORK = {

@@ -27,6 +27,7 @@ class CrawlJobSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'start_date', 'end_date',
             'province_id', 'township_id', 'province_name', 'township_name',
+            'target_worker', 'target_queue',
             'status', 'total_records', 'fetched_records',
             'current_page', 'total_pages', 'progress_percentage',
             'detail_total', 'detail_processed', 'detail_errors', 'detail_status',
@@ -53,7 +54,8 @@ class CrawlJobCreateSerializer(serializers.ModelSerializer):
         model = CrawlJob
         fields = [
             'name', 'start_date', 'end_date',
-            'province_id', 'township_id', 'province_name', 'township_name'
+            'province_id', 'township_id', 'province_name', 'township_name',
+            'target_worker', 'target_queue'
         ]
 
 

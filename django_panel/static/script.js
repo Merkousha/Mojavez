@@ -22,10 +22,13 @@ const CSRF_TOKEN = getCookie('csrftoken');
 // SSE Connection
 let eventSource = null;
 let jobsData = {};  // Cache for jobs data
+let workersCache = {};
+let defaultQueue = 'default';
 
 // Load stats and jobs on page load (only once)
 document.addEventListener('DOMContentLoaded', () => {
     // Load initial data once
+    loadWorkers();
     loadStats();
     loadJobs();
     
@@ -35,6 +38,60 @@ document.addEventListener('DOMContentLoaded', () => {
     // Simple polling to keep job list (including detail progress) fresh
     setInterval(loadJobs, 5000);
 });
+
+// Load workers list
+async function loadWorkers() {
+    try {
+        const response = await fetch(`${API_BASE}/jobs/workers/`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        defaultQueue = data.default_queue || 'default';
+        workersCache = {};
+        (data.workers || []).forEach(worker => {
+            workersCache[worker.name] = worker.queues || [];
+        });
+
+        populateWorkerSelect('workerSelect', 'queueSelect');
+    } catch (error) {
+        console.error('Error loading workers:', error);
+    }
+}
+
+function populateWorkerSelect(workerSelectId, queueSelectId) {
+    const workerSelect = document.getElementById(workerSelectId);
+    const queueSelect = document.getElementById(queueSelectId);
+    if (!workerSelect || !queueSelect) {
+        return;
+    }
+
+    const workerOptions = ['<option value="">خودکار</option>'];
+    Object.keys(workersCache).forEach(workerName => {
+        workerOptions.push(`<option value="${workerName}">${workerName}</option>`);
+    });
+    workerSelect.innerHTML = workerOptions.join('');
+
+    updateQueueSelect(queueSelect, []);
+
+    workerSelect.addEventListener('change', () => {
+        const workerName = workerSelect.value;
+        const queues = workersCache[workerName] || [];
+        updateQueueSelect(queueSelect, queues);
+    });
+}
+
+function updateQueueSelect(queueSelect, queues) {
+    const options = ['<option value="">پیش فرض</option>'];
+    const queueList = queues.length > 0 ? queues : [defaultQueue];
+    queueList.forEach(queueName => {
+        if (queueName) {
+            options.push(`<option value="${queueName}">${queueName}</option>`);
+        }
+    });
+    queueSelect.innerHTML = options.join('');
+}
 
 // Connect to SSE
 function connectSSE() {
@@ -165,6 +222,8 @@ function createJobCard(job) {
     const detailErrors = job.detail_errors || 0;
     const detailStatus = job.detail_status || 'pending';
     const detailPercent = detailTotal > 0 ? Math.floor((detailProcessed / detailTotal) * 100) : 0;
+    const targetWorker = job.target_worker || '-';
+    const targetQueue = job.target_queue || '-';
     
     return `
         <div class="job-card" id="job-${job.id}">
@@ -185,6 +244,10 @@ function createJobCard(job) {
                 <div class="job-info-item">
                     <span class="job-info-label">رکوردها:</span>
                     <span class="job-info-value">${job.fetched_records.toLocaleString('fa-IR')} / ${job.total_records.toLocaleString('fa-IR')}</span>
+                </div>
+                <div class="job-info-item">
+                    <span class="job-info-label">ورکر/صف:</span>
+                    <span class="job-info-value">${targetWorker} / ${targetQueue}</span>
                 </div>
                 ${detailTotal > 0 || detailStatus === 'running' ? `
                 <div class="job-info-item">
@@ -255,7 +318,9 @@ document.getElementById('createJobForm').addEventListener('submit', async (e) =>
         province_id: document.getElementById('provinceId').value ? parseInt(document.getElementById('provinceId').value) : null,
         township_id: document.getElementById('townshipId').value ? parseInt(document.getElementById('townshipId').value) : null,
         province_name: document.getElementById('provinceName').value || null,
-        township_name: document.getElementById('townshipName').value || null
+        township_name: document.getElementById('townshipName').value || null,
+        target_worker: document.getElementById('workerSelect').value || null,
+        target_queue: document.getElementById('queueSelect').value || null
     };
     
     try {

@@ -56,6 +56,10 @@ class CrawlJob(models.Model):
     
     # Celery task ID
     task_id = models.CharField(max_length=255, null=True, blank=True, verbose_name='شناسه Task')
+
+    # Worker routing
+    target_worker = models.CharField(max_length=255, null=True, blank=True, verbose_name='ورکر مقصد')
+    target_queue = models.CharField(max_length=255, null=True, blank=True, verbose_name='صف مقصد')
     
     class Meta:
         verbose_name = 'کراول جاب'
