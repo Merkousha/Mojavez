@@ -337,6 +337,107 @@ class MojavezCrawler:
             logger.error(f"❌ Error getting cities list: {e}")
             return []
 
+    def fetch_detail_via_graphql(self, request_number: str) -> Optional[Dict[str, Any]]:
+        """
+        تلاش برای دریافت جزئیات مجوز از GraphQL به جای صفحه track.
+
+        Args:
+            request_number: کد رهگیری (همان request_number)
+
+        Returns:
+            دیکشنری داده‌ها یا None در صورت عدم دسترسی/خطا
+        """
+        details_query = """
+        query LicenseRequestDetails($id: String!) {
+            licenseRequestDetails {
+                license(id: $id) {
+                    license_title
+                    organization_title
+                    isic_code
+                    issue_type
+                    responded_at
+                    old_license_responded_at
+                    expires_at
+                    status {
+                        status_id
+                        status_title
+                        status_slug
+                    }
+                }
+                location(id: $id) {
+                    province
+                    township
+                    postal_code
+                    address
+                    map
+                }
+                applicant(id: $id) {
+                    applicant_name
+                    user_type
+                    company_name
+                    father_name
+                    code
+                    user_image
+                    work_mobile
+                }
+                approval(id: $id) {
+                    approval_title
+                    respondent_organization
+                    receiver_gateway
+                    approval_type
+                    request_type
+                }
+                history(id: $id) {
+                    license_operation
+                    operation_reasons
+                    created_at
+                    status
+                }
+                note(id: $id) {
+                    foot_notes
+                    aside_notes
+                }
+            }
+        }
+        """
+
+        try:
+            result = self.execute_query(details_query, {"id": request_number})
+            if "errors" in result:
+                logger.warning(f"⚠️ GraphQL detail errors for {request_number}: {result['errors']}")
+                return None
+
+            details = result.get("data", {}).get("licenseRequestDetails")
+            if not details:
+                return None
+
+            info = details.get("license") or {}
+            location = details.get("location") or {}
+            status = info.get("status") if isinstance(info.get("status"), dict) else {}
+
+            data: Dict[str, Any] = {
+                "request_number": request_number,
+                "license_title": info.get("license_title"),
+                "organization_title": info.get("organization_title"),
+                "isic_code": info.get("isic_code"),
+                "issue_type": info.get("issue_type"),
+                "issued_at": info.get("responded_at") or info.get("old_license_responded_at"),
+                "expires_at": info.get("expires_at"),
+                "province_title_detail": location.get("province"),
+                "township_title_detail": location.get("township"),
+                "postal_code": location.get("postal_code"),
+                "business_address": location.get("address"),
+                "status_title": status.get("status_title"),
+                "status_slug": status.get("status_slug"),
+                "raw_graphql": details,
+                "source": "graphql",
+            }
+
+            return data
+        except Exception as e:
+            logger.error(f"❌ Error fetching GraphQL detail for {request_number}: {e}")
+            return None
+
     def fetch_track_page(self, request_number: str) -> Optional[str]:
         """
         دریافت HTML صفحه track بر اساس request_number

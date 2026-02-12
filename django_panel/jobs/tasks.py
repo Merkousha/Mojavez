@@ -338,6 +338,10 @@ def fetch_mojavez_details_for_job(self, job_id: int):
     crawler = MojavezCrawler()
     processed = 0
     errors = 0
+    graphql_success = 0
+    graphql_fail = 0
+    html_fallback_used = 0
+    html_fallback_failed = 0
     
     for record in job.records.all().iterator():
         if not record.request_number:
@@ -348,13 +352,23 @@ def fetch_mojavez_details_for_job(self, job_id: int):
             continue
         
         try:
-            html = crawler.fetch_track_page(record.request_number)
-            if not html:
-                errors += 1
-                continue
-            
-            parsed = crawler.parse_track_html(html, request_number=record.request_number)
-            
+            # First try GraphQL-based detail fetch
+            parsed = crawler.fetch_detail_via_graphql(record.request_number)
+
+            # Fallback to HTML track page if GraphQL fails
+            if not parsed:
+                graphql_fail += 1
+                html = crawler.fetch_track_page(record.request_number)
+                if not html:
+                    html_fallback_failed += 1
+                    errors += 1
+                    continue
+                parsed = crawler.parse_track_html(html, request_number=record.request_number)
+                parsed["source"] = "html"
+                html_fallback_used += 1
+            else:
+                graphql_success += 1
+
             MojavezDetail.objects.create(
                 crawl_record=record,
                 request_number=parsed.get("request_number") or record.request_number,
@@ -389,7 +403,16 @@ def fetch_mojavez_details_for_job(self, job_id: int):
     job.detail_status = 'completed'
     job.save(update_fields=['detail_status'])
 
-    logger.info(f"✅ [Detail Job {job_id}] Done. Processed: {processed}, Errors: {errors}")
+    logger.info(
+        "✅ [Detail Job %s] Done. Processed: %s, Errors: %s | GraphQL ok: %s, GraphQL fail: %s | HTML used: %s, HTML fail: %s",
+        job_id,
+        processed,
+        errors,
+        graphql_success,
+        graphql_fail,
+        html_fallback_used,
+        html_fallback_failed,
+    )
     return {
         "job_id": job_id,
         "processed": processed,

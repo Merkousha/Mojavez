@@ -207,6 +207,11 @@ CORS_ALLOW_ALL_ORIGINS = True  # در production محدود کنید
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "https://sharif-web1.darkube.app",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://sharif-web1.darkube.app",
 ]
 
 # Static files
