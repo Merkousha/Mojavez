@@ -194,7 +194,8 @@ CELERY_WORKER_CONCURRENCY = int(os.getenv('CELERY_WORKER_CONCURRENCY', '4'))
 # Reduce heartbeat frequency so busy workers (long HTTP/DB) don't trigger "missed heartbeat" and get marked dead.
 # Default 2s is too aggressive when processing 1.4M+ records. Use 60s or disable via --without-heartbeat in CMD.
 CELERY_WORKER_HEARTBEAT_INTERVAL = int(os.getenv('CELERY_WORKER_HEARTBEAT_INTERVAL', '60'))
-CELERY_DEFAULT_QUEUE = os.getenv('CELERY_DEFAULT_QUEUE', 'default')
+# Must be 'celery' so tasks reach workers (workers listen to queue 'celery' by default).
+CELERY_DEFAULT_QUEUE = os.getenv('CELERY_DEFAULT_QUEUE', 'celery')
 CELERY_KNOWN_WORKERS = [
     name.strip()
     for name in os.getenv('CELERY_KNOWN_WORKERS', '').split(',')

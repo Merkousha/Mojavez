@@ -93,3 +93,4 @@ celery -A crawler_panel flower --broker=<REDIS_URL>
 | How to avoid "missed heartbeat" stopping the process? | Use **`--without-heartbeat`** (in Dockerfile) and/or higher **CELERY_WORKER_HEARTBEAT_INTERVAL**. |
 | How to see readable worker names when adding a task? | Set **CELERY_WORKER_NAME** in each pod/Deployment (e.g. `worker-tehran`, `worker-1`). |
 | How to know if workers are really working and not erroring? | Check logs for `Received task` / `🚀 [Job …]` / `succeeded` / `FAILED`; or use **Flower**; or check job status in the Django panel. |
+| Workers are "ready" but no tasks run? | Ensure **CELERY_DEFAULT_QUEUE** matches the queue workers consume. Default in Celery is **`celery`**; if the app sent tasks to `default`, workers (listening to `celery`) would never receive them. Set `CELERY_DEFAULT_QUEUE=celery` (or run workers with `-Q default` if you keep queue name `default`). |
