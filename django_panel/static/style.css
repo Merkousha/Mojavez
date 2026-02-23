@@ -273,6 +273,18 @@ select:focus {
     flex-direction: column;
 }
 
+.assign-worker-row {
+    margin-top: 6px;
+}
+.assign-worker-select {
+    max-width: 320px;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.95em;
+    margin-top: 4px;
+}
+
 .job-info-label {
     font-size: 0.85em;
     color: #666;

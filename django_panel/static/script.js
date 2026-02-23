@@ -222,8 +222,16 @@ function createJobCard(job) {
     const detailErrors = job.detail_errors || 0;
     const detailStatus = job.detail_status || 'pending';
     const detailPercent = detailTotal > 0 ? Math.floor((detailProcessed / detailTotal) * 100) : 0;
-    const targetWorker = job.target_worker || '-';
-    const targetQueue = job.target_queue || '-';
+    const hasWorker = !!(job.target_worker || job.target_queue);
+    const workerDisplay = job.target_worker || (job.target_queue ? `صف: ${job.target_queue}` : null) || '—';
+    const canStart = job.status === 'pending' || job.status === 'failed' || job.status === 'cancelled';
+    const workerNames = Object.keys(workersCache);
+    if (job.target_worker && !workerNames.includes(job.target_worker)) {
+        workerNames.push(job.target_worker);
+    }
+    const workerOptions = workerNames.map(name =>
+        `<option value="${name}" ${job.target_worker === name ? ' selected' : ''}>${name}</option>`
+    ).join('');
     
     return `
         <div class="job-card" id="job-${job.id}">
@@ -246,9 +254,28 @@ function createJobCard(job) {
                     <span class="job-info-value">${job.fetched_records.toLocaleString('fa-IR')} / ${job.total_records.toLocaleString('fa-IR')}</span>
                 </div>
                 <div class="job-info-item">
-                    <span class="job-info-label">ورکر/صف:</span>
-                    <span class="job-info-value">${targetWorker} / ${targetQueue}</span>
+                    <span class="job-info-label">ورکر:</span>
+                    <span class="job-info-value">${hasWorker ? workerDisplay : '— (بدون ورکر)'}</span>
+                    ${job.target_queue ? `<span class="job-info-value" style="margin-right:8px">صف: ${job.target_queue}</span>` : ''}
                 </div>
+                ${canStart && !hasWorker ? `
+                <div class="job-info-item assign-worker-row">
+                    <span class="job-info-label">اختصاص ورکر:</span>
+                    <select id="assign-worker-${job.id}" class="assign-worker-select">
+                        <option value="">خودکار (صف پیش‌فرض)</option>
+                        ${workerOptions}
+                    </select>
+                </div>
+                ` : ''}
+                ${canStart && hasWorker ? `
+                <div class="job-info-item assign-worker-row">
+                    <span class="job-info-label">تغییر ورکر:</span>
+                    <select id="assign-worker-${job.id}" class="assign-worker-select">
+                        <option value="">همان ورکر فعلی</option>
+                        ${workerOptions}
+                    </select>
+                </div>
+                ` : ''}
                 ${detailTotal > 0 || detailStatus === 'running' ? `
                 <div class="job-info-item">
                     <span class="job-info-label">جزئیات مجوز:</span>
@@ -293,6 +320,9 @@ function createJobCard(job) {
             <div class="job-actions">
                 ${job.status === 'pending' ? `
                     <button class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع</button>
+                ` : ''}
+                ${(job.status === 'failed' || job.status === 'cancelled') ? `
+                    <button class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع مجدد</button>
                 ` : ''}
                 ${job.status === 'running' ? `
                     <button class="btn btn-danger" onclick="cancelJob(${job.id})">⏹️ لغو</button>
@@ -349,23 +379,39 @@ document.getElementById('createJobForm').addEventListener('submit', async (e) =>
 
 // Start job
 async function startJob(jobId) {
+    const assignSelect = document.getElementById(`assign-worker-${jobId}`);
+    let targetWorker = null;
+    let targetQueue = null;
+    if (assignSelect && assignSelect.value) {
+        targetWorker = assignSelect.value;
+        const queues = workersCache[targetWorker];
+        if (queues && queues.length > 0) {
+            targetQueue = queues[0];
+        }
+    }
+    const body = {};
+    if (targetWorker) body.target_worker = targetWorker;
+    if (targetQueue) body.target_queue = targetQueue;
+
     try {
         const response = await fetch(`${API_BASE}/jobs/${jobId}/start/`, {
             method: 'POST',
             headers: {
+                'Content-Type': 'application/json',
                 'X-CSRFToken': CSRF_TOKEN,
             },
+            body: Object.keys(body).length ? JSON.stringify(body) : undefined,
         });
         
         if (response.ok) {
-            alert('✅ کراول شروع شد!');
+            alert('✅ کراول شروع شد!' + (targetWorker ? ` (ورکر: ${targetWorker})` : ''));
             loadJobs();
         } else {
             const error = await response.json();
-            alert('❌ خطا: ' + (error.detail || 'خطای نامشخص'));
+            alert('❌ خطا: ' + (error.detail || error.error || 'خطای نامشخص'));
         }
     } catch (error) {
-        alert('❌ خطا: ' + error.message);
+        alert('❌ خطا در شروع کراول: ' + error.message);
     }
 }
 
