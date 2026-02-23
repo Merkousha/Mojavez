@@ -19,7 +19,8 @@ from .models import CrawlJob, CrawlRecord, MojavezDetail
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=10)
+# Long-running crawl: ack only after completion (so pod restart re-queues task); no time limit so job can finish.
+@shared_task(bind=True, max_retries=10, acks_late=True, time_limit=24 * 60 * 60, soft_time_limit=23 * 60 * 60)
 def run_crawl_job(self, job_id):
     """
     Execute crawl job
@@ -314,7 +315,7 @@ def run_crawl_job(self, job_id):
         raise self.retry(exc=e, countdown=countdown)
 
 
-@shared_task(bind=True, max_retries=5)
+@shared_task(bind=True, max_retries=5, acks_late=True, time_limit=24 * 60 * 60, soft_time_limit=23 * 60 * 60)
 def fetch_mojavez_details_for_job(self, job_id: int):
     """
     برای همه رکوردهای یک CrawlJob، صفحه track را با BeautifulSoup می‌خواند

@@ -184,10 +184,16 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
-CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes
+# Global time limit; long-running crawl tasks override this (see tasks.py)
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes default
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes default
+# Late ack: task is acked only after completion, so if worker dies mid-task it gets re-queued (safe with job resume).
+CELERY_TASK_ACKS_LATE = os.getenv('CELERY_TASK_ACKS_LATE', 'True').lower() == 'true'
 CELERY_WORKER_POOL = 'threads'  # Use threads pool for Windows compatibility
-CELERY_WORKER_CONCURRENCY = 4  # Number of concurrent threads
+CELERY_WORKER_CONCURRENCY = int(os.getenv('CELERY_WORKER_CONCURRENCY', '4'))
+# Reduce heartbeat frequency so busy workers (long HTTP/DB) don't trigger "missed heartbeat" and get marked dead.
+# Default 2s is too aggressive when processing 1.4M+ records. Use 60s or disable via --without-heartbeat in CMD.
+CELERY_WORKER_HEARTBEAT_INTERVAL = int(os.getenv('CELERY_WORKER_HEARTBEAT_INTERVAL', '60'))
 CELERY_DEFAULT_QUEUE = os.getenv('CELERY_DEFAULT_QUEUE', 'default')
 CELERY_KNOWN_WORKERS = [
     name.strip()

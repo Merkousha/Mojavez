@@ -31,5 +31,10 @@ COPY . .
 WORKDIR /app/django_panel
 
 # Default command: Celery worker
-CMD ["celery", "-A", "crawler_panel", "worker", "--loglevel=info", "--pool=threads", "--concurrency=4"]
+# -n (node name): use CELERY_WORKER_NAME so workers show up with a readable name in the panel (e.g. celery@worker-tehran).
+#   Set CELERY_WORKER_NAME in K8s Deployment env (e.g. worker-1, worker-tehran) so when adding a task you see these names.
+# --without-heartbeat: avoid "missed heartbeat" when workers are busy (long HTTP/DB); K8s liveness can still probe.
+# --max-tasks-per-child=50: recycle worker processes to limit memory growth over 1M+ records.
+# Concurrency/heartbeat can be overridden via env (CELERY_WORKER_CONCURRENCY, CELERY_WORKER_HEARTBEAT_INTERVAL).
+CMD ["sh", "-c", "celery -A crawler_panel worker --loglevel=info --pool=threads --concurrency=${CELERY_WORKER_CONCURRENCY:-4} --without-heartbeat --max-tasks-per-child=50 -n ${CELERY_WORKER_NAME:-worker}@%h"]
 
