@@ -326,6 +326,8 @@ function createJobCard(job) {
                 ` : ''}
                 ${job.status === 'running' ? `
                     <button class="btn btn-danger" onclick="cancelJob(${job.id})">⏹️ لغو</button>
+                    <button class="btn btn-primary" onclick="requeueJob(${job.id})" title="اگر تسک روی Redis نیست، دوباره به صف بفرست">📤 ارسال مجدد به صف</button>
+                    <button class="btn btn-secondary" onclick="checkTaskState(${job.id})" title="وضعیت تسک در Celery/Redis">🔍 وضعیت تسک</button>
                 ` : ''}
                 <button class="btn btn-secondary" onclick="viewRecords(${job.id})">📄 رکوردها</button>
                 ${job.status === 'completed' ? `
@@ -412,6 +414,44 @@ async function startJob(jobId) {
         }
     } catch (error) {
         alert('❌ خطا در شروع کراول: ' + error.message);
+    }
+}
+
+// Check Celery/Redis task state for a job
+async function checkTaskState(jobId) {
+    try {
+        const response = await fetch(`${API_BASE}/jobs/${jobId}/task_state/`);
+        const data = await response.json();
+        const lost = data.lost ? ' ⚠️ تسک احتمالاً از صف رفته' : '';
+        alert(`وضعیت تسک: ${data.state || '—'}\n${data.message || ''}${lost}\n${data.task_id ? 'Task ID: ' + data.task_id : ''}`);
+    } catch (error) {
+        alert('❌ خطا در بررسی وضعیت تسک: ' + error.message);
+    }
+}
+
+// Re-queue job to Redis (for running jobs whose task was lost from queue)
+async function requeueJob(jobId) {
+    if (!confirm('این job دوباره به صف Redis فرستاده می‌شود و از همان checkpoint ادامه پیدا می‌کند. ادامه؟')) {
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE}/jobs/${jobId}/requeue/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN,
+            },
+        });
+        if (response.ok) {
+            const data = await response.json();
+            alert('✅ ارسال مجدد به صف انجام شد.\nTask ID: ' + (data.task_id || '—'));
+            loadJobs();
+        } else {
+            const error = await response.json();
+            alert('❌ خطا: ' + (error.error || error.detail || 'خطای نامشخص'));
+        }
+    } catch (error) {
+        alert('❌ خطا در ارسال مجدد به صف: ' + error.message);
     }
 }
 

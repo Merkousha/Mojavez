@@ -14,6 +14,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from celery import current_app
+from celery.result import AsyncResult
 from .models import CrawlJob, CrawlRecord
 from .serializers import (
     CrawlJobSerializer, CrawlJobCreateSerializer,
@@ -265,6 +266,75 @@ class CrawlJobViewSet(viewsets.ModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @action(detail=True, methods=['get'])
+    def task_state(self, request, pk=None):
+        """
+        وضعیت تسک این job در Celery/Redis را برمی‌گرداند.
+        اگر task_id نباشد یا تسک در صف/در حال اجرا نباشد، می‌توان نتیجه را «گم شده» در نظر گرفت.
+        """
+        job = self.get_object()
+        if not job.task_id:
+            return Response({
+                'task_id': None,
+                'state': 'no_task',
+                'lost': True,
+                'message': 'تسکی برای این job ثبت نشده است.',
+            })
+        try:
+            result = AsyncResult(job.task_id, app=current_app)
+            state = result.state or 'UNKNOWN'
+            # PENDING = در صف یا هنوز شروع نشده؛ STARTED = در حال اجرا؛ SUCCESS/FAILURE/REVOKED = تمام شده یا لغو
+            lost = state in ('PENDING', 'UNKNOWN') and job.status == 'running'
+            return Response({
+                'task_id': job.task_id,
+                'state': state,
+                'lost': lost,
+                'message': _task_state_message(state, job.status),
+            })
+        except Exception as e:
+            return Response({
+                'task_id': job.task_id,
+                'state': 'error',
+                'lost': True,
+                'message': str(e),
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def requeue(self, request, pk=None):
+        """
+        ارسال مجدد job به صف Redis (برای وقتی که وضعیت در DB «در حال اجرا» است ولی تسک روی Redis نیست).
+        تسک قبلی در صورت وجود لغو می‌شود و یک تسک جدید به صف فرستاده می‌شود؛ job از همان checkpoint ادامه می‌دهد.
+        """
+        job = self.get_object()
+        if job.status == 'completed':
+            return Response(
+                {'error': 'Job is already completed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        target_worker = request.data.get('target_worker') or job.target_worker
+        target_queue = request.data.get('target_queue') or job.target_queue
+        resolved_queue = _resolve_target_queue(target_worker, target_queue)
+        job.target_worker = target_worker or job.target_worker
+        job.target_queue = resolved_queue
+
+        if job.task_id:
+            try:
+                current_app.control.revoke(job.task_id, terminate=True)
+            except Exception:
+                pass
+            job.task_id = None
+
+        task = run_crawl_job.apply_async(args=[job.id], queue=resolved_queue)
+        job.task_id = task.id
+        job.status = 'running'
+        job.save(update_fields=['task_id', 'status', 'target_worker', 'target_queue'])
+
+        return Response({
+            'message': 'Job re-queued to Redis',
+            'task_id': task.id,
+            'queue': resolved_queue,
+        })
+
     @action(detail=False, methods=['get'])
     def workers(self, request):
         """لیست ورکرها و صف‌های فعال"""
@@ -273,6 +343,25 @@ class CrawlJobViewSet(viewsets.ModelViewSet):
             'workers': workers,
             'default_queue': settings.CELERY_DEFAULT_QUEUE,
         })
+
+
+def _task_state_message(state: str, job_status: str) -> str:
+    """پیام فارسی برای وضعیت تسک"""
+    if state == 'no_task':
+        return 'تسکی ثبت نشده است.'
+    if state == 'PENDING':
+        return 'در صف یا در انتظار شروع.'
+    if state == 'STARTED':
+        return 'در حال اجرا روی ورکر.'
+    if state == 'SUCCESS':
+        return 'با موفقیت تمام شده.'
+    if state == 'FAILURE':
+        return 'با خطا تمام شده.'
+    if state == 'REVOKED':
+        return 'لغو شده.'
+    if job_status == 'running' and state in ('PENDING', 'UNKNOWN'):
+        return 'احتمالاً تسک از صف رفته؛ می‌توانید «ارسال مجدد به صف» بزنید.'
+    return f'وضعیت: {state}'
 
 
 class CrawlRecordViewSet(viewsets.ReadOnlyModelViewSet):
