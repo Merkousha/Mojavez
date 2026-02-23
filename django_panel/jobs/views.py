@@ -302,8 +302,8 @@ class CrawlJobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def requeue(self, request, pk=None):
         """
-        ارسال مجدد job به صف Redis (برای وقتی که وضعیت در DB «در حال اجرا» است ولی تسک روی Redis نیست).
-        تسک قبلی در صورت وجود لغو می‌شود و یک تسک جدید به صف فرستاده می‌شود؛ job از همان checkpoint ادامه می‌دهد.
+        احیا: ارسال مجدد تسک این job به صف Redis (مثلاً بعد از کرش Redis و پاک شدن صف).
+        تسک قبلی در صورت وجود لغو می‌شود؛ یک تسک جدید به صف فرستاده می‌شود و job از همان checkpoint ادامه می‌دهد.
         """
         job = self.get_object()
         if job.status == 'completed':

@@ -351,8 +351,10 @@ function createJobCard(job) {
                 ` : ''}
                 ${job.status === 'running' ? `
                     <button class="btn btn-danger" onclick="cancelJob(${job.id})">⏹️ لغو</button>
-                    <button class="btn btn-primary" onclick="requeueJob(${job.id})" title="اگر تسک روی Redis نیست، دوباره به صف بفرست">📤 ارسال مجدد به صف</button>
                     <button class="btn btn-secondary" onclick="checkTaskState(${job.id})" title="وضعیت تسک در Celery/Redis">🔍 وضعیت تسک</button>
+                ` : ''}
+                ${job.status !== 'completed' ? `
+                    <button class="btn btn-primary" onclick="requeueJob(${job.id})" title="تسک این job را دوباره به صف Redis می‌فرستد (مثلاً بعد از کرش Redis). از همان checkpoint ادامه می‌دهد.">🔄 احیا</button>
                 ` : ''}
                 <button class="btn btn-secondary" onclick="viewRecords(${job.id})">📄 رکوردها</button>
                 ${job.status === 'completed' ? `
@@ -454,9 +456,9 @@ async function checkTaskState(jobId) {
     }
 }
 
-// Re-queue job to Redis (for running jobs whose task was lost from queue)
+// احیا: ارسال مجدد تسک job به صف Redis (مثلاً بعد از کرش Redis)
 async function requeueJob(jobId) {
-    if (!confirm('این job دوباره به صف Redis فرستاده می‌شود و از همان checkpoint ادامه پیدا می‌کند. ادامه؟')) {
+    if (!confirm('تسک این job دوباره به صف Redis فرستاده می‌شود و از همان نقطه قبلی ادامه پیدا می‌کند. ادامه؟')) {
         return;
     }
     try {
@@ -469,14 +471,14 @@ async function requeueJob(jobId) {
         });
         if (response.ok) {
             const data = await response.json();
-            alert('✅ ارسال مجدد به صف انجام شد.\nTask ID: ' + (data.task_id || '—'));
+            alert('✅ job احیا شد و تسک به صف Redis اضافه شد.\nTask ID: ' + (data.task_id || '—'));
             loadJobs();
         } else {
             const error = await response.json();
             alert('❌ خطا: ' + (error.error || error.detail || 'خطای نامشخص'));
         }
     } catch (error) {
-        alert('❌ خطا در ارسال مجدد به صف: ' + error.message);
+        alert('❌ خطا در احیا: ' + error.message);
     }
 }
 
