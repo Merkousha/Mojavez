@@ -31,7 +31,25 @@ document.addEventListener('DOMContentLoaded', () => {
     loadWorkers();
     loadStats();
     loadJobs();
-    
+
+    // Single delegated click handler for all job action buttons (avoids inline onclick; works with CSP)
+    document.getElementById('jobsList').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action][data-job-id]');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const action = btn.getAttribute('data-action');
+        const jobId = parseInt(btn.getAttribute('data-job-id'), 10);
+        if (!action || !jobId) return;
+        if (action === 'start') startJob(jobId);
+        else if (action === 'cancel') cancelJob(jobId);
+        else if (action === 'task-state') checkTaskState(jobId);
+        else if (action === 'requeue') requeueJob(jobId);
+        else if (action === 'view-records') viewRecords(jobId);
+        else if (action === 'fetch-details') fetchDetails(jobId);
+        else if (action === 'delete') deleteJob(jobId);
+    });
+
     // Connect to Server-Sent Events for real-time updates
     connectSSE();
 
@@ -345,27 +363,27 @@ function createJobCard(job) {
             
             <div class="job-actions">
                 ${job.status === 'pending' ? `
-                    <button type="button" class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع</button>
+                    <button type="button" class="btn btn-success" data-action="start" data-job-id="${job.id}">▶️ شروع</button>
                 ` : ''}
                 ${(job.status === 'failed' || job.status === 'cancelled') ? `
-                    <button type="button" class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع مجدد</button>
+                    <button type="button" class="btn btn-success" data-action="start" data-job-id="${job.id}">▶️ شروع مجدد</button>
                 ` : ''}
                 ${job.status === 'running' ? `
-                    <button type="button" class="btn btn-danger" onclick="cancelJob(${job.id})">⏹️ لغو</button>
-                    <button type="button" class="btn btn-secondary" onclick="checkTaskState(${job.id})" title="وضعیت تسک در Celery/Redis">🔍 وضعیت تسک</button>
+                    <button type="button" class="btn btn-danger" data-action="cancel" data-job-id="${job.id}">⏹️ لغو</button>
+                    <button type="button" class="btn btn-secondary" data-action="task-state" data-job-id="${job.id}" title="وضعیت تسک در Celery/Redis">🔍 وضعیت تسک</button>
                 ` : ''}
                 ${job.status !== 'completed' ? `
-                    <button type="button" class="btn btn-primary" onclick="requeueJob(${job.id})" title="تسک این job را دوباره به صف Redis می‌فرستد (مثلاً بعد از کرش Redis). از همان checkpoint ادامه می‌دهد.">🔄 احیا</button>
+                    <button type="button" class="btn btn-primary" data-action="requeue" data-job-id="${job.id}" title="تسک این job را دوباره به صف Redis می‌فرستد (مثلاً بعد از کرش Redis). از همان checkpoint ادامه می‌دهد.">🔄 احیا</button>
                 ` : ''}
-                <button type="button" class="btn btn-secondary" onclick="viewRecords(${job.id})">📄 رکوردها</button>
+                <button type="button" class="btn btn-secondary" data-action="view-records" data-job-id="${job.id}">📄 رکوردها</button>
                 ${job.status === 'completed' ? `
                     ${detailIncomplete ? `
-                    <button type="button" class="btn btn-primary" onclick="fetchDetails(${job.id})" title="تسک دریافت جزئیات مجوز را دوباره به صف Redis می‌فرستد؛ از همان نقطه قبلی ادامه می‌دهد.">🔄 احیا (ادامه جزئیات)</button>
+                    <button type="button" class="btn btn-primary" data-action="fetch-details" data-job-id="${job.id}" title="تسک دریافت جزئیات مجوز را دوباره به صف Redis می‌فرستد؛ از همان نقطه قبلی ادامه می‌دهد.">🔄 احیا (ادامه جزئیات)</button>
                     ` : `
-                    <button type="button" class="btn btn-primary" onclick="fetchDetails(${job.id})">📥 جزئیات مجوز</button>
+                    <button type="button" class="btn btn-primary" data-action="fetch-details" data-job-id="${job.id}">📥 جزئیات مجوز</button>
                     `}
                 ` : ''}
-                <button type="button" class="btn btn-danger" onclick="deleteJob(${job.id})">🗑️ حذف</button>
+                <button type="button" class="btn btn-danger" data-action="delete" data-job-id="${job.id}">🗑️ حذف</button>
             </div>
         </div>
     `;
