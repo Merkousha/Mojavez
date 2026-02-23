@@ -141,8 +141,9 @@ def run_crawl_job(self, job_id):
             except Exception as e:
                 logger.error(f"❌ [Job {job_id}] Error updating progress: {e}")
         
-        # Check if we should use splitting strategy
-        if total_count > crawler.MAX_RECORDS_PER_REQUEST:
+        # When resuming (احیا), always use direct pagination from current_page so we don't re-fetch from the start.
+        # Otherwise use splitting strategy for large counts, or direct pagination for small counts.
+        if total_count > crawler.MAX_RECORDS_PER_REQUEST and not is_resume:
             logger.info(f"📊 [Job {job_id}] Count ({total_count}) exceeds limit ({crawler.MAX_RECORDS_PER_REQUEST}). Using splitting strategy...")
             all_records = crawler.crawl_date_range(
                 start_date,
@@ -153,8 +154,11 @@ def run_crawl_job(self, job_id):
                 save_callback=save_records_callback
             )
         else:
-            # If count is within limit, use direct pagination
-            logger.info(f"📊 [Job {job_id}] Count ({total_count}) is within limit. Using direct pagination...")
+            # Direct pagination (with resume from current_page when is_resume)
+            if is_resume:
+                logger.info(f"📊 [Job {job_id}] Resuming from page {resume_from_page} ({existing_records_count} records already in DB)...")
+            else:
+                logger.info(f"📊 [Job {job_id}] Count ({total_count}) is within limit. Using direct pagination...")
             
             # Check if resuming - skip already fetched records
             if is_resume and existing_records_count > 0:
