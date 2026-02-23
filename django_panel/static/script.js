@@ -235,6 +235,7 @@ function createJobCard(job) {
     const detailErrors = job.detail_errors || 0;
     const detailStatus = job.detail_status || 'pending';
     const detailPercent = detailTotal > 0 ? Math.floor((detailProcessed / detailTotal) * 100) : 0;
+    const detailIncomplete = detailTotal > 0 && detailProcessed < detailTotal;
     const hasWorker = !!(job.target_worker || job.target_queue);
     const workerDisplay = job.target_worker || (job.target_queue ? `صف: ${job.target_queue}` : null) || '—';
     const canStart = job.status === 'pending' || job.status === 'failed' || job.status === 'cancelled';
@@ -325,14 +326,14 @@ function createJobCard(job) {
                 </div>
             ` : ''}
             
-            ${detailStatus === 'running' && detailTotal > 0 ? `
+            ${(detailStatus === 'running' || (job.status === 'completed' && detailIncomplete)) && detailTotal > 0 ? `
                 <div class="progress-bar" style="margin-top: 6px; background: #f0f4ff;">
                     <div class="progress-fill" style="width: ${detailPercent}%; background: #007bff;">
                         ${detailPercent}%
                     </div>
                 </div>
                 <div style="text-align: center; margin-top: 3px; color: #666; font-size: 0.85em;">
-                    در حال دریافت جزئیات مجوز...
+                    ${detailStatus === 'running' ? 'در حال دریافت جزئیات مجوز...' : 'جزئیات مجوز ناتمام — برای ادامه دکمه «احیا (ادامه جزئیات)» را بزنید.'}
                 </div>
             ` : ''}
             
@@ -358,7 +359,11 @@ function createJobCard(job) {
                 ` : ''}
                 <button class="btn btn-secondary" onclick="viewRecords(${job.id})">📄 رکوردها</button>
                 ${job.status === 'completed' ? `
+                    ${detailIncomplete ? `
+                    <button class="btn btn-primary" onclick="fetchDetails(${job.id})" title="تسک دریافت جزئیات مجوز را دوباره به صف Redis می‌فرستد؛ از همان نقطه قبلی ادامه می‌دهد.">🔄 احیا (ادامه جزئیات)</button>
+                    ` : `
                     <button class="btn btn-primary" onclick="fetchDetails(${job.id})">📥 جزئیات مجوز</button>
+                    `}
                 ` : ''}
                 <button class="btn btn-danger" onclick="deleteJob(${job.id})">🗑️ حذف</button>
             </div>
