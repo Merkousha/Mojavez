@@ -27,6 +27,10 @@ RUN pip install --upgrade pip && \
 # Copy project
 COPY . .
 
+# Run as non-root to avoid SecurityWarning (Do not run the worker with superuser privileges)
+RUN adduser --disabled-password --gecos "" celeryuser && chown -R celeryuser:celeryuser /app
+USER celeryuser
+
 # Django project directory
 WORKDIR /app/django_panel
 

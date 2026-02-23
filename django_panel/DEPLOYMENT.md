@@ -43,6 +43,46 @@ env:
 
 اگر چند پاد با یک `CELERY_WORKER_NAME` داشته باشید، به‌خاطر `@%h` نام هر ورکر یونیک می‌ماند (مثلاً `celery@worker-tehran@worker10-85c96d5444-7kdr9`). اگر هر Deployment فقط یک replica داشته باشد و به هر کدام یک `CELERY_WORKER_NAME` جدا بدهید (مثلاً worker-1 تا worker-19)، در لیست ورکرها همان نام‌های خوانا را می‌بینید.
 
+## چطور بفهمم ورکرها واقعاً کار می‌کنند و خطا نخورده‌اند؟
+
+### ۱. از روی لاگ همین ورکر
+
+- **ورکر آماده است** اگر این را دیدید:  
+  `Worker19@worker19-... ready.`  
+  یعنی به Redis وصل شده و منتظر تسک است. بعدش فقط پیام‌های `mingle: sync with ...` یا `sync with WorkerX@...` می‌آید تا وقتی تسکی به این ورکر نرسد.
+
+- **وقتی تسکی به این ورکر می‌رسد** در لاگ باید یکی از این‌ها را ببینید:
+  - `Received task: jobs.tasks.run_crawl_job[...]` (شروع دریافت تسک)
+  - `🚀 [Job 123] Starting crawl job...` (شروع اجرای واقعی از کد ما)
+  - در حین کار: `📄 [Job 123] Fetching page 5...` و `📈 [Job 123] Progress: 10%...`
+  - در پایان موفق: `✅ [Job 123] Completed successfully!` و در لاگ Celery: `Task jobs.tasks.run_crawl_job[...] succeeded in ...`
+  - در صورت خطا: `❌ [Job 123] Error: ...` و در لاگ Celery: `Task ... FAILED: ...`
+
+اگر بعد از `ready.` فقط `sync with WorkerX` می‌بینید و هیچ `Received task` یا `🚀 [Job ...]` نیست، یعنی **هنوز تسکی به این ورکر نفرستاده‌اید**؛ ورکر سالم است، فقط بیکار.
+
+### ۲. Flower (پنل وب برای Celery)
+
+با **Flower** می‌توانید ببینید کدام ورکرها آنلاین‌اند، الان چه تسکی روی کدام ورکر در حال اجراست و کدام تسک‌ها موفق/ناموفق شده‌اند.
+
+```bash
+# روی همان Redis پروژه
+celery -A crawler_panel flower --broker=<REDIS_URL>
+```
+
+بعد در مرورگر آدرس Flower را باز کنید (مثلاً همان پورتی که Flower روی آن بالا آمده). در تب Workers لیست ورکرها و وضعیت آنلاین/آفلاین، و در تب Tasks لیست تسک‌های در حال اجرا و انجام‌شده (و در صورت خطا، وضعیت Failed) را می‌بینید.
+
+### ۳. از طریق پنل Django
+
+در صفحه لیست کراول‌ها وضعیت هر job (در انتظار / در حال اجرا / تکمیل شده / ناموفق) و پیشرفت (مثلاً درصد و صفحه) نمایش داده می‌شود. اگر jobی «در حال اجرا» است و عدد پیشرفت عوض می‌شود، یعنی حداقل یک ورکر آن تسک را در حال اجرا دارد.
+
+### ۴. هشدار امنیتی در لاگ (اجرا با root)
+
+اگر این را دیدید:  
+`SecurityWarning: You're running the worker with superuser privileges`  
+یعنی ورکر با کاربر root داخل کانتینر اجرا شده. برای رفع این هشدار در Dockerfile.worker یک کاربر غیر root اضافه شده و ورکر با همان کاربر اجرا می‌شود؛ بعد از rebuild تصویر این هشدار نباید بیاید.
+
+---
+
 ## Summary
 
 | Question | Answer |
@@ -52,3 +92,4 @@ env:
 | What about tasks that were running when the pod died? | With **acks_late=True**, they are **re-queued** and run again; your job resume handles duplicates and progress. |
 | How to avoid "missed heartbeat" stopping the process? | Use **`--without-heartbeat`** (in Dockerfile) and/or higher **CELERY_WORKER_HEARTBEAT_INTERVAL**. |
 | How to see readable worker names when adding a task? | Set **CELERY_WORKER_NAME** in each pod/Deployment (e.g. `worker-tehran`, `worker-1`). |
+| How to know if workers are really working and not erroring? | Check logs for `Received task` / `🚀 [Job …]` / `succeeded` / `FAILED`; or use **Flower**; or check job status in the Django panel. |

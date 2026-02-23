@@ -53,11 +53,35 @@ python manage.py runserver
 
 ### 7. (اختیاری) راه‌اندازی Flower (Monitoring)
 
+Flower از همان Redis تنظیمات Django استفاده می‌کند (متغیرهای REDIS_HOST, REDIS_PORT, REDIS_PASSWORD در env یا .env).
+
+**روش ۱ – با تنظیمات پروژه (پیشنهادی):**
+
 ```bash
-celery -A crawler_panel flower
+cd django_panel
+celery -A crawler_panel flower --port=5555
 ```
 
-سپس باز کنید: http://localhost:5555
+یا در ویندوز:
+
+```cmd
+cd django_panel
+run_flower.bat
+```
+
+**روش ۲ – با آدرس صریح Redis:**
+
+```bash
+celery -A crawler_panel flower --broker=redis://:PASSWORD@HOST:PORT/0 --port=5555
+```
+
+مثال (مقادیر را با env واقعی عوض کنید):
+
+```bash
+celery -A crawler_panel flower --broker=redis://:YOUR_REDIS_PASSWORD@61861254-f6b9-4944-92b6-232030221351.hsvc.ir:28906/0 --port=5555
+```
+
+سپس در مرورگر باز کنید: **http://localhost:5555**
 
 ## دسترسی
 
