@@ -203,6 +203,19 @@ function renderJobs(jobs) {
     jobsList.innerHTML = jobs.map(job => createJobCard(job)).join('');
 }
 
+// Format duration in seconds to human-readable (e.g. "۲ ساعت ۵ دقیقه" or "۴۵ دقیقه")
+function formatDuration(seconds) {
+    if (seconds == null || seconds < 0) return '—';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const parts = [];
+    if (h > 0) parts.push(h + ' ساعت');
+    if (m > 0) parts.push(m + ' دقیقه');
+    if (s > 0 && parts.length === 0) parts.push(s + ' ثانیه');
+    return parts.length ? parts.join(' و ') : '۰';
+}
+
 // Create job card HTML
 function createJobCard(job) {
     const statusClass = `status-${job.status}`;
@@ -289,6 +302,18 @@ function createJobCard(job) {
                     <span class="job-info-label">تاریخ ایجاد:</span>
                     <span class="job-info-value">${new Date(job.created_at).toLocaleString('fa-IR')}</span>
                 </div>
+                ${job.completed_at ? `
+                <div class="job-info-item">
+                    <span class="job-info-label">تاریخ اتمام:</span>
+                    <span class="job-info-value">${new Date(job.completed_at).toLocaleString('fa-IR')}</span>
+                </div>
+                ` : ''}
+                ${job.duration_seconds != null ? `
+                <div class="job-info-item">
+                    <span class="job-info-label">مدت زمان:</span>
+                    <span class="job-info-value">${formatDuration(job.duration_seconds)}</span>
+                </div>
+                ` : ''}
             </div>
             
             ${job.status === 'running' ? `

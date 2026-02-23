@@ -21,7 +21,8 @@ class CrawlRecordSerializer(serializers.ModelSerializer):
 class CrawlJobSerializer(serializers.ModelSerializer):
     """Serializer برای کراول جاب"""
     records_count = serializers.SerializerMethodField()
-    
+    duration_seconds = serializers.SerializerMethodField()
+
     class Meta:
         model = CrawlJob
         fields = [
@@ -31,7 +32,7 @@ class CrawlJobSerializer(serializers.ModelSerializer):
             'status', 'total_records', 'fetched_records',
             'current_page', 'total_pages', 'progress_percentage',
             'detail_total', 'detail_processed', 'detail_errors', 'detail_status',
-            'created_at', 'started_at', 'completed_at',
+            'created_at', 'started_at', 'completed_at', 'duration_seconds',
             'error_message', 'task_id', 'records_count'
         ]
         read_only_fields = [
@@ -41,10 +42,17 @@ class CrawlJobSerializer(serializers.ModelSerializer):
             'created_at', 'started_at', 'completed_at',
             'error_message', 'task_id'
         ]
-    
+
     def get_records_count(self, obj):
         """تعداد رکوردهای این جاب"""
         return obj.records.count()
+
+    def get_duration_seconds(self, obj):
+        """مدت زمان اجرا (ثانیه)؛ فقط وقتی هر دو started_at و completed_at پر باشند."""
+        if obj.started_at and obj.completed_at:
+            delta = obj.completed_at - obj.started_at
+            return max(0, int(delta.total_seconds()))
+        return None
 
 
 class CrawlJobCreateSerializer(serializers.ModelSerializer):
