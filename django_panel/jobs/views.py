@@ -250,7 +250,8 @@ class CrawlJobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def fetch_details(self, request, pk=None):
         """
-        راه‌اندازی تسک Celery برای کشیدن جزئیات صفحه track (mojavez_detail)
+        راه‌اندازی تسک Celery برای کشیدن جزئیات صفحه track (mojavez_detail).
+        بلافاصله detail_status را running می‌گذارد تا با رفرش لیست کاربر ببیند تسک ثبت شده.
         """
         job = self.get_object()
         target_worker = request.data.get('target_worker') or job.target_worker
@@ -258,11 +259,12 @@ class CrawlJobViewSet(viewsets.ModelViewSet):
         resolved_queue = _resolve_target_queue(target_worker, target_queue)
         job.target_worker = target_worker or job.target_worker
         job.target_queue = resolved_queue
-        job.save(update_fields=['target_worker', 'target_queue'])
+        job.detail_status = 'running'
+        job.save(update_fields=['target_worker', 'target_queue', 'detail_status'])
 
         task = fetch_mojavez_details_for_job.apply_async(args=[job.id], queue=resolved_queue)
         return Response(
-            {"message": "Detail fetch started", "task_id": task.id},
+            {"message": "Detail fetch started", "task_id": task.id, "queue": resolved_queue},
             status=status.HTTP_202_ACCEPTED,
         )
 

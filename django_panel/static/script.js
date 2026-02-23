@@ -345,27 +345,27 @@ function createJobCard(job) {
             
             <div class="job-actions">
                 ${job.status === 'pending' ? `
-                    <button class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع</button>
+                    <button type="button" class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع</button>
                 ` : ''}
                 ${(job.status === 'failed' || job.status === 'cancelled') ? `
-                    <button class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع مجدد</button>
+                    <button type="button" class="btn btn-success" onclick="startJob(${job.id})">▶️ شروع مجدد</button>
                 ` : ''}
                 ${job.status === 'running' ? `
-                    <button class="btn btn-danger" onclick="cancelJob(${job.id})">⏹️ لغو</button>
-                    <button class="btn btn-secondary" onclick="checkTaskState(${job.id})" title="وضعیت تسک در Celery/Redis">🔍 وضعیت تسک</button>
+                    <button type="button" class="btn btn-danger" onclick="cancelJob(${job.id})">⏹️ لغو</button>
+                    <button type="button" class="btn btn-secondary" onclick="checkTaskState(${job.id})" title="وضعیت تسک در Celery/Redis">🔍 وضعیت تسک</button>
                 ` : ''}
                 ${job.status !== 'completed' ? `
-                    <button class="btn btn-primary" onclick="requeueJob(${job.id})" title="تسک این job را دوباره به صف Redis می‌فرستد (مثلاً بعد از کرش Redis). از همان checkpoint ادامه می‌دهد.">🔄 احیا</button>
+                    <button type="button" class="btn btn-primary" onclick="requeueJob(${job.id})" title="تسک این job را دوباره به صف Redis می‌فرستد (مثلاً بعد از کرش Redis). از همان checkpoint ادامه می‌دهد.">🔄 احیا</button>
                 ` : ''}
-                <button class="btn btn-secondary" onclick="viewRecords(${job.id})">📄 رکوردها</button>
+                <button type="button" class="btn btn-secondary" onclick="viewRecords(${job.id})">📄 رکوردها</button>
                 ${job.status === 'completed' ? `
                     ${detailIncomplete ? `
-                    <button class="btn btn-primary" onclick="fetchDetails(${job.id})" title="تسک دریافت جزئیات مجوز را دوباره به صف Redis می‌فرستد؛ از همان نقطه قبلی ادامه می‌دهد.">🔄 احیا (ادامه جزئیات)</button>
+                    <button type="button" class="btn btn-primary" onclick="fetchDetails(${job.id})" title="تسک دریافت جزئیات مجوز را دوباره به صف Redis می‌فرستد؛ از همان نقطه قبلی ادامه می‌دهد.">🔄 احیا (ادامه جزئیات)</button>
                     ` : `
-                    <button class="btn btn-primary" onclick="fetchDetails(${job.id})">📥 جزئیات مجوز</button>
+                    <button type="button" class="btn btn-primary" onclick="fetchDetails(${job.id})">📥 جزئیات مجوز</button>
                     `}
                 ` : ''}
-                <button class="btn btn-danger" onclick="deleteJob(${job.id})">🗑️ حذف</button>
+                <button type="button" class="btn btn-danger" onclick="deleteJob(${job.id})">🗑️ حذف</button>
             </div>
         </div>
     `;
@@ -571,9 +571,9 @@ async function viewRecords(jobId) {
     }
 }
 
-// Fetch mojavez_detail for a job
+// Fetch mojavez_detail for a job (احیا ادامه جزئیات یا شروع جزئیات)
 async function fetchDetails(jobId) {
-    if (!confirm('برای این کراول، جزئیات مجوزها از سایت qr.mojavez.ir خوانده و در جدول mojavez_detail ذخیره شود؟')) {
+    if (!confirm('جزئیات مجوزها از سایت qr.mojavez.ir خوانده و در جدول mojavez_detail ذخیره شوند؟ (از همان نقطه قبلی ادامه می‌دهد)')) {
         return;
     }
 
@@ -581,18 +581,20 @@ async function fetchDetails(jobId) {
         const response = await fetch(`${API_BASE}/jobs/${jobId}/fetch_details/`, {
             method: 'POST',
             headers: {
+                'Content-Type': 'application/json',
                 'X-CSRFToken': CSRF_TOKEN,
             },
         });
 
+        const data = response.ok ? await response.json().catch(() => ({})) : await response.json().catch(() => ({}));
         if (response.ok) {
-            alert('✅ تسک دریافت جزئیات مجوزها شروع شد. چند لحظه بعد، رکوردها در دیتابیس پر می‌شوند.');
+            alert('✅ تسک به صف فرستاده شد.\nTask ID: ' + (data.task_id || '—') + '\nصف: ' + (data.queue || 'celery'));
+            loadJobs();
         } else {
-            const error = await response.json();
-            alert('❌ خطا در شروع تسک جزئیات: ' + (error.detail || error.error || 'خطای نامشخص'));
+            alert('❌ خطا: ' + (data.detail || data.error || data.message || 'خطای نامشخص'));
         }
     } catch (error) {
-        alert('❌ خطا در اتصال برای دریافت جزئیات: ' + error.message);
+        alert('❌ خطا در اتصال: ' + error.message);
     }
 }
 
