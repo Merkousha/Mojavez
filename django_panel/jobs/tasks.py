@@ -330,32 +330,38 @@ def fetch_mojavez_details_for_job(self, job_id: int):
     except CrawlJob.DoesNotExist:
         logger.error(f"❌ [Detail Job {job_id}] CrawlJob not found")
         return {'job_id': job_id, 'status': 'not_found'}
-    
-    total = job.records.count()
-    job.detail_total = total
-    job.detail_processed = 0
-    job.detail_errors = 0
+
+    # در حالت احیا، رکوردهایی که قبلاً mojavez_detail دارند را دوباره پردازش نکن.
+    # تعداد جزئیات موجود را به عنوان processed اولیه در نظر می‌گیریم و فقط رکوردهای بدون detail را پردازش می‌کنیم.
+    existing_details_count = MojavezDetail.objects.filter(crawl_record__crawl_job=job).count()
+    pending_qs = job.records.filter(detail__isnull=True)
+    total_records = job.records.count()
+
+    job.detail_total = total_records
+    job.detail_processed = existing_details_count
+    # خطاهای قبلی را حفظ می‌کنیم؛ اگر اولین بار است معمولاً صفر است.
+    errors = job.detail_errors or 0
+    job.detail_errors = errors
     job.detail_status = 'running'
     job.save(update_fields=['detail_total', 'detail_processed', 'detail_errors', 'detail_status'])
 
-    logger.info(f"🧾 [Detail Job {job_id}] Fetching mojavez_detail for {total} records...")
-    
+    logger.info(
+        f"🧾 [Detail Job {job_id}] Fetching mojavez_detail for {pending_qs.count()} remaining records "
+        f"(already have details for {existing_details_count} records out of {total_records})."
+    )
+
     crawler = MojavezCrawler()
-    processed = 0
-    errors = 0
+    processed_this_run = 0
     graphql_success = 0
     graphql_fail = 0
     html_fallback_used = 0
     html_fallback_failed = 0
-    
-    for record in job.records.all().iterator():
+
+    # فقط رکوردهایی را می‌گیریم که هنوز detail ندارند (برای جلوگیری از duplicate key)
+    for record in pending_qs.iterator():
         if not record.request_number:
             continue
-        
-        # اگر قبلاً جزئیات ثبت شده، رد شو
-        if hasattr(record, "detail"):
-            continue
-        
+
         try:
             # First try GraphQL-based detail fetch
             parsed = crawler.fetch_detail_via_graphql(record.request_number)
@@ -391,12 +397,13 @@ def fetch_mojavez_details_for_job(self, job_id: int):
                 status_slug=parsed.get("status_slug"),
                 raw_data=parsed,
             )
-            processed += 1
+            processed_this_run += 1
+            existing_details_count += 1
 
-            # Update job detail progress
-            job.detail_processed = processed
+            # Update job detail progress (بر اساس مجموع جزئیات موجود)
+            job.detail_processed = existing_details_count
             job.save(update_fields=['detail_processed'])
-            
+
             # تاخیر خیلی کوتاه برای احترام به سرور
             time.sleep(0.3)
         except Exception as e:
@@ -404,14 +411,14 @@ def fetch_mojavez_details_for_job(self, job_id: int):
             errors += 1
             job.detail_errors = errors
             job.save(update_fields=['detail_errors'])
-    
+
     job.detail_status = 'completed'
     job.save(update_fields=['detail_status'])
 
     logger.info(
         "✅ [Detail Job %s] Done. Processed: %s, Errors: %s | GraphQL ok: %s, GraphQL fail: %s | HTML used: %s, HTML fail: %s",
         job_id,
-        processed,
+        processed_this_run,
         errors,
         graphql_success,
         graphql_fail,
@@ -420,6 +427,6 @@ def fetch_mojavez_details_for_job(self, job_id: int):
     )
     return {
         "job_id": job_id,
-        "processed": processed,
+        "processed": processed_this_run,
         "errors": errors,
     }
